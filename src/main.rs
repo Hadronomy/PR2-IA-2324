@@ -3,7 +3,9 @@ use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     prelude::*,
 };
+use bevy_ecs_tilemap::helpers::square_grid::SquarePos;
 use bevy_ecs_tilemap::{helpers::square_grid::neighbors::*, prelude::*};
+use rand::seq::IteratorRandom;
 use rand::Rng;
 
 fn main() {
@@ -150,7 +152,7 @@ fn init_maze(
 ) {
     let texture_handle: Handle<Image> = asset_server.load("tiles.png");
 
-    let map_size = TilemapSize { x: 64, y: 32 };
+    let map_size = TilemapSize { x: 79, y: 45 };
 
     // Create a tilemap entity a little early.
     // We want this entity early because we need to tell each tile which tilemap entity
@@ -206,9 +208,35 @@ fn init_maze(
     ev_generate_maze.send(GenerateMazeEvent {});
 }
 
+fn neighbors(tile_pos: &TilePos, map_size: &TilemapSize) -> Neighbors<TilePos> {
+    let square_pos = SquarePos::from(tile_pos);
+    let f = |direction: SquareDirection| {
+        if direction.is_cardinal() {
+            square_pos
+                .offset(&direction)
+                .offset(&direction)
+                .as_tile_pos(map_size)
+        } else {
+            None
+        }
+    };
+    Neighbors::from_directional_closure(f)
+}
+
+fn find_wall(current: &TilePos, next: &TilePos, map_size: &TilemapSize) -> Option<TilePos> {
+    let current = SquarePos::from(current);
+    let next = SquarePos::from(next);
+    let offset = SquarePos {
+        x: (current.x - next.x) / 2,
+        y: (current.y - next.y) / 2,
+    };
+    let wall = current - offset;
+    wall.as_tile_pos(map_size)
+}
+
 fn generate_maze(
     mut commands: Commands,
-    storage_query: Query<&TileStorage>,
+    storage_query: Query<&TileStorage, With<Maze>>,
     active_maze: Res<ActiveMaze>,
     mut ev_generate_maze: EventReader<GenerateMazeEvent>,
 ) {
@@ -224,17 +252,53 @@ fn generate_maze(
                 commands
                     .entity(tile_storage.get(&tile_pos).unwrap())
                     .insert(TileColor(Color::BLACK))
-                    .insert(TileType::Floor);
+                    .insert(TileType::Wall);
             }
         }
 
         // Recursive backtracking maze generation algorithm.
         // https://en.wikipedia.org/wiki/Maze_generation_algorithm#Recursive_backtracker
         let mut rng = rand::thread_rng();
-        let current = TilePos { x: rng.gen_range(0..grid_size.x), y: rng.gen_range(0..grid_size.y) };
-        let mut stack = vec![current];
-        let mut visited = vec![current];
-        
+        let first = {
+            let mut first = TilePos {
+                x: rng.gen_range(1..grid_size.x - 1),
+                y: rng.gen_range(1..grid_size.y - 1),
+            };
+            while first.x % 2 != 0 || first.y % 2 != 0 {
+                first = TilePos {
+                    x: rng.gen_range(1..grid_size.x),
+                    y: rng.gen_range(1..grid_size.y),
+                };
+            }
+            first
+        };
+        let mut stack: Vec<TilePos> = vec![first];
+        let mut visited: Vec<TilePos> = vec![first];
+        commands
+            .entity(tile_storage.get(&first).unwrap())
+            .insert(TileColor(Color::YELLOW))
+            .insert(TileType::Floor);
+        while let Some(current) = stack.pop() {
+            let neighbors = neighbors(&current, &grid_size);
+            let unvisited = neighbors.iter().filter(|n| !visited.contains(n));
+            let next = unvisited.choose(&mut rng);
+
+            if let Some(next) = next {
+                stack.push(current);
+                if let Some(wall) = find_wall(&current, next, &grid_size) {
+                    commands
+                        .entity(tile_storage.get(&wall).unwrap())
+                        .insert(TileColor(Color::WHITE))
+                        .insert(TileType::Floor);
+                    commands
+                        .entity(tile_storage.get(next).unwrap())
+                        .insert(TileColor(Color::WHITE))
+                        .insert(TileType::Floor);
+                    stack.push(*next);
+                }
+                visited.push(*next);
+            }
+        }
 
         // for x in 0..grid_size.x {
         //     for y in 0..grid_size.y {
