@@ -1,8 +1,6 @@
 use bevy::math::*;
 use bevy::{prelude::*, diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, window::PrimaryWindow};
-use bevy_ecs_tilemap::prelude::*;
-
-use bevy_screen_diagnostics::{ScreenDiagnosticsPlugin, ScreenFrameDiagnosticsPlugin};
+use bevy_ecs_tilemap::{prelude::*, helpers::square_grid::neighbors::*};
 
 fn main() {
     App::new()
@@ -15,23 +13,33 @@ fn main() {
             }),
             ..default()
         }).set(ImagePlugin::default_nearest()), 
-            FrameTimeDiagnosticsPlugin
+            // LogDiagnosticsPlugin::default(),
+            FrameTimeDiagnosticsPlugin::default()
         ))
         .init_resource::<CursorPos>()
         .add_plugins(TilemapPlugin)
-        .add_systems(Startup, startup.in_set(SpawnTilemapSet))
+        .add_systems(Startup, startup.in_set(ConfigureMaze))
         .add_systems(Update, (update_cursor_pos, text_update_system))
         .run();
 }
 
 #[derive(SystemSet, Clone, Copy, Hash, PartialEq, Eq, Debug)]
-pub struct SpawnTilemapSet;
+pub struct ConfigureMaze;
+
+#[derive(Component)]
+struct Maze;
 
 #[derive(Component)]
 struct FpsText;
 
 #[derive(Component)]
 struct CursorPosText;
+
+#[derive(Component)]
+enum TileType {
+    Wall,
+    Floor
+}
 
 fn startup(
     mut commands: Commands,
@@ -68,16 +76,42 @@ fn startup(
                 .spawn(TileBundle {
                     position: tile_pos,
                     tilemap_id: TilemapId(tilemap_entity),
+                    texture_index: TileTextureIndex(5),
+                    color: TileColor(Color::BLACK),
                     ..Default::default()
                 })
                 .id();
+            commands.entity(tile_entity).insert(TileType::Wall);
             tile_storage.set(&tile_pos, tile_entity);
         }
     }
 
+    // let neighbor_positions =
+    //      Neighbors::get_square_neighboring_positions(&TilePos { x: 0, y: 0 }, &map_size, true);
+    // let neighbor_entities = neighbor_positions.entities(&tile_storage);
+
+    // We can access tiles using:
+    // assert!(tile_storage.get(&TilePos { x: 0, y: 0 }).is_some());
+    // assert_eq!(neighbor_entities.iter().count(), 3); // Only 3 neighbors since negative is outside of map.
+
     let tile_size = TilemapTileSize { x: 16.0, y: 16.0 };
     let grid_size = tile_size.into();
     let map_type = TilemapType::default();
+
+    // This changes some of our tiles by looking at neighbors.
+    for x in 0..map_size.x {
+        for y in 0..map_size.y {
+            let is_wall: bool = rand::random();
+            // Grabbing neighbors is easy.
+            if is_wall {
+                commands
+                    .entity(tile_storage.get(&TilePos { x, y }).unwrap())
+                    .insert(TileColor(Color::WHITE))
+                    .insert(TileType::Wall);
+            }
+            
+        }
+    }
 
     commands.entity(tilemap_entity).insert(TilemapBundle {
         grid_size,
@@ -88,7 +122,7 @@ fn startup(
         tile_size,
         transform: get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0),
         ..Default::default()
-    });
+    }).insert(Maze);
 
     commands.spawn((
         // Create a TextBundle that has a Text with a list of sections.
