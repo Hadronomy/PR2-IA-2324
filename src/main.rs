@@ -299,19 +299,6 @@ fn generate_maze(
                 visited.push(*next);
             }
         }
-
-        // for x in 0..grid_size.x {
-        //     for y in 0..grid_size.y {
-        //         let is_floor: bool = rand::random();
-        //         // Grabbing neighbors is easy.
-        //         if is_floor {
-        //             commands
-        //                 .entity(tile_storage.get(&TilePos { x, y }).unwrap())
-        //                 .insert(TileColor(Color::WHITE))
-        //                 .insert(TileType::Floor);
-        //         }
-        //     }
-        // }
     }
 }
 
@@ -336,8 +323,8 @@ fn regenerate_on_click(
             TilePos::from_world_pos(&cursor_in_map_pos, map_size, grid_size, map_type)
         {
             println!("tile_pos: {:?}", tile_pos);
+            ev_generate_maze.send(GenerateMazeEvent {});
         }
-        ev_generate_maze.send(GenerateMazeEvent {});
     }
 }
 
